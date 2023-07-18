@@ -3,6 +3,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 struct State {
