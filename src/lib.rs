@@ -3,6 +3,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use wasm_bindgen::prelude::*;
 
 struct State {
     surface: wgpu::Surface,
@@ -15,6 +16,19 @@ struct State {
     render_pipeline2: wgpu::RenderPipeline,
     draw_first: bool,
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex { position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0] }, // Top
+    Vertex { position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0] }, // Bottom Left
+    Vertex { position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0] }, // Bottom Right
+];
 
 impl State {
 
