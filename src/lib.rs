@@ -3,6 +3,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use wgpu::util::DeviceExt;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -15,21 +16,47 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
     render_pipeline: wgpu::RenderPipeline,
-    render_pipeline2: wgpu::RenderPipeline,
-    draw_first: bool,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 3],
     color: [f32; 3],
 }
 
+impl Vertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
+
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
 const VERTICES: &[Vertex] = &[
-    Vertex { position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0] }, // Top
-    Vertex { position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0] }, // Bottom Left
-    Vertex { position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0] }, // Bottom Right
+    Vertex { position: [ 1.0, 0.0, 0.0], color: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5, 0.87, 0.0], color: [0.0, 1.0, 0.0] },
+    Vertex { position: [ -0.5, 0.87, 0.0], color: [0.5, 0.0, 1.0] },
+    Vertex { position: [ -1.0, 0.0, 0.0], color: [0.5, 1.0, 0.5] },
+    Vertex { position: [ -0.5, -0.87, 0.0], color: [1.0, 0.0, 0.5] },
+    Vertex { position: [ 0.5, -0.87, 0.0], color: [0.3, 0.0, 1.0] },
+];
+
+const INDICES: &[u16] = &[
+    0, 1, 2,
+    0, 2, 3,
+    0, 3, 4,
+    0, 4, 5,
 ];
 
 impl State {
@@ -59,7 +86,7 @@ impl State {
                     ..
                 },
                 ..
-            } => { self.draw_first = !self.draw_first }
+            } => {  }
             _ => {}
         }
 
@@ -86,7 +113,7 @@ impl State {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: 0.,
-                            g: 1.,
+                            g: 0.,
                             b: 0.,
                             a: 1.,
                         }),
@@ -96,13 +123,10 @@ impl State {
                 depth_stencil_attachment: None
             });
 
-            if self.draw_first {
-                render_pass.set_pipeline(&self.render_pipeline);
-            } else {
-                render_pass.set_pipeline(&self.render_pipeline2);
-            }
-
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_vertex_buffer( 0, self.vertex_buffer.slice(..) );
+            render_pass.set_index_buffer( self.index_buffer.slice(..), wgpu::IndexFormat::Uint16 );
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -191,7 +215,9 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[],
+                buffers: &[
+                    Vertex::desc(),
+                ],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -220,54 +246,23 @@ impl State {
             multiview: None
         });
 
-        // Pipeline layout 2
+        let vertex_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
 
-        let shader2 = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader2.wgsl").into()),
-        });
+        let index_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(INDICES),
+                usage: wgpu::BufferUsages::INDEX,
+            }
+        );
 
-        let render_pipeline_layoutw =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout 2"),
-                bind_group_layouts: &[],
-                push_constant_ranges: &[],
-            });
-
-        let render_pipeline2 = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline 2"),
-            layout: Some(&render_pipeline_layoutw),
-            vertex: wgpu::VertexState {
-                module: &shader2,
-                entry_point: "vs_main",
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader2,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None
-        });
+        let num_indices = INDICES.len() as u32;
 
         Self {
             window,
@@ -277,8 +272,9 @@ impl State {
             config,
             size,
             render_pipeline,
-            render_pipeline2,
-            draw_first: true,
+            vertex_buffer,
+            index_buffer,
+            num_indices,
         }
     }
 }
@@ -302,13 +298,13 @@ pub async fn run() {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
         use winit::dpi::PhysicalSize;
-        window.set_inner_size(PhysicalSize::new(450, 400));
+        window.set_inner_size(PhysicalSize::new(1440, 1440));
 
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())
             .and_then(|doc| {
-                let dst = doc.get_element_by_id("wasm-example")?;
+                let dst = doc.get_element_by_id("agw-wasm")?;
                 let canvas = web_sys::Element::from(window.canvas());
                 dst.append_child(&canvas).ok()?;
                 Some(())
