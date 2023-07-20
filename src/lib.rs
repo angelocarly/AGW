@@ -39,6 +39,8 @@ struct State {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+    left_pressed: bool,
+    right_pressed: bool,
 }
 
 #[repr(C)]
@@ -64,19 +66,40 @@ impl Vertex {
 }
 
 const VERTICES: &[Vertex] = &[
-    Vertex { position: [ 1.0, 0.0, 0.0], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5, 0.87, 0.0], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [ -0.5, 0.87, 0.0], color: [0.5, 0.0, 1.0] },
-    Vertex { position: [ -1.0, 0.0, 0.0], color: [0.5, 1.0, 0.5] },
-    Vertex { position: [ -0.5, -0.87, 0.0], color: [1.0, 0.0, 0.5] },
-    Vertex { position: [ 0.5, -0.87, 0.0], color: [0.3, 0.0, 1.0] },
+    Vertex { position: [ -0.5, -0.5, -0.5], color: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5, -0.5, -0.5], color: [0.0, 1.0, 0.0] },
+    Vertex { position: [ 0.5, 0.5, -0.5], color: [1.0, 0.5, 0.0] },
+    Vertex { position: [ -0.5, 0.5, -0.5], color: [0.0, 0.0, 1.0] },
+    Vertex { position: [ -0.5, -0.5, 0.5], color: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5, -0.5, 0.5], color: [0.5, 0.0, 1.0] },
+    Vertex { position: [ 0.5, 0.5, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex { position: [ -0.5, 0.5, 0.5], color: [0.0, 1.0, 0.5] },
 ];
 
 const INDICES: &[u16] = &[
-    0, 1, 2,
-    0, 2, 3,
-    0, 3, 4,
-    0, 4, 5,
+    //bottom
+    0, 2, 1,
+    0, 3, 2,
+
+    //top
+    4, 5, 6,
+    4, 6, 7,
+
+    // left
+    7, 3, 0,
+    0, 4, 7,
+
+    // right
+    1, 2, 5,
+    5, 2, 6,
+
+    // front
+    0, 1, 4,
+    4, 1, 5,
+
+    // back
+    2, 3, 6,
+    6, 3, 7,
 ];
 
 // We need this for Rust to store our data correctly for the shaders
@@ -122,7 +145,13 @@ impl ModelUniform {
 
     fn update(&mut self) {
         let orig: Matrix4<f32> = self.model.into();
-        let a: Matrix4<f32> = cgmath::Matrix4::from_angle_z( cgmath::Rad( 0.001 ) );
+        let a: Matrix4<f32> = cgmath::Matrix4::from_angle_z( cgmath::Rad( -0.001 ) );
+        self.model = ( orig * a ).into();
+    }
+
+    fn rotate( &mut self, angle: f32 ) {
+        let orig: Matrix4<f32> = self.model.into();
+        let a: Matrix4<f32> = cgmath::Matrix4::from_angle_z( cgmath::Rad( angle ) );
         self.model = ( orig * a ).into();
     }
 }
@@ -146,10 +175,43 @@ impl State {
 
     fn input(&mut self, event: &WindowEvent) -> bool {
 
-        self.camera_controller.process_events(event)
+        // self.camera_controller.process_events(event)
+
+        match event {
+            WindowEvent::KeyboardInput {
+                input: KeyboardInput {
+                    state,
+                    virtual_keycode: Some(keycode),
+                    ..
+                },
+                ..
+            } => {
+                let pressed = *state == ElementState::Pressed;
+                match keycode {
+                    VirtualKeyCode::A | VirtualKeyCode::Left => {
+                        self.left_pressed = pressed;
+                        true
+                    }
+                    VirtualKeyCode::D | VirtualKeyCode::Right => {
+                        self.right_pressed = pressed;
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
     }
 
     fn update(&mut self) {
+        if self.left_pressed {
+            self.model_uniform.rotate(0.01);
+        }
+
+        if self.right_pressed {
+            self.model_uniform.rotate(-0.01);
+        }
+
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
@@ -445,6 +507,8 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indices,
+            left_pressed: false,
+            right_pressed: false,
         }
     }
 }
