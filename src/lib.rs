@@ -7,6 +7,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 use wgpu::util::DeviceExt;
+use winit::dpi::PhysicalSize;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -175,42 +176,42 @@ impl State {
 
     fn input(&mut self, event: &WindowEvent) -> bool {
 
-        // self.camera_controller.process_events(event)
+        self.camera_controller.process_events(event)
 
-        match event {
-            WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state,
-                    virtual_keycode: Some(keycode),
-                    ..
-                },
-                ..
-            } => {
-                let pressed = *state == ElementState::Pressed;
-                match keycode {
-                    VirtualKeyCode::A | VirtualKeyCode::Left => {
-                        self.left_pressed = pressed;
-                        true
-                    }
-                    VirtualKeyCode::D | VirtualKeyCode::Right => {
-                        self.right_pressed = pressed;
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            _ => false,
-        }
+        // match event {
+        //     WindowEvent::KeyboardInput {
+        //         input: KeyboardInput {
+        //             state,
+        //             virtual_keycode: Some(keycode),
+        //             ..
+        //         },
+        //         ..
+        //     } => {
+        //         let pressed = *state == ElementState::Pressed;
+        //         match keycode {
+        //             VirtualKeyCode::A | VirtualKeyCode::Left => {
+        //                 self.left_pressed = pressed;
+        //                 true
+        //             }
+        //             VirtualKeyCode::D | VirtualKeyCode::Right => {
+        //                 self.right_pressed = pressed;
+        //                 true
+        //             }
+        //             _ => false,
+        //         }
+        //     }
+        //     _ => false,
+        // }
     }
 
     fn update(&mut self) {
-        if self.left_pressed {
-            self.model_uniform.rotate(0.01);
-        }
-
-        if self.right_pressed {
-            self.model_uniform.rotate(-0.01);
-        }
+        // if self.left_pressed {
+        //     self.model_uniform.rotate(0.01);
+        // }
+        //
+        // if self.right_pressed {
+        //     self.model_uniform.rotate(-0.01);
+        // }
 
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
@@ -326,7 +327,7 @@ impl State {
         let camera = Camera {
             // position the camera one unit up and 2 units back
             // +z is out of the screen
-            eye: (0.0, 1.0, 2.0).into(),
+            eye: (0.0, -1.0, 1.0).into(),
             // have it look at the origin
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"
@@ -352,7 +353,7 @@ impl State {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -375,7 +376,7 @@ impl State {
             label: Some("camera_bind_group"),
         });
 
-        let camera_controller = CameraController::new(0.2);
+        let camera_controller = CameraController::new(0.02);
 
         // Model
 
@@ -527,6 +528,7 @@ pub async fn run() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
+    window.set_inner_size(PhysicalSize::new(1440, 1440));
     #[cfg(target_arch = "wasm32")]
     {
         // Winit prevents sizing with CSS, so we have to set
@@ -541,6 +543,7 @@ pub async fn run() {
                 let dst = doc.get_element_by_id("agw-wasm")?;
                 let canvas = web_sys::Element::from(window.canvas());
                 dst.append_child(&canvas).ok()?;
+                canvas.set_attribute("style", "width: 100%; height: 100%").ok()?;
                 Some(())
             })
             .expect("Couldn't append canvas to document body.");
